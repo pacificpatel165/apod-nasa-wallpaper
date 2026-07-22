@@ -86,6 +86,29 @@ if you don't have a Windows box handy, a free GitHub Actions
    word if you'd like the more involved WiX version that skips even
    that click.)
 
+## Why the wallpaper sometimes shows "yesterday's" APOD
+
+NASA APOD is published on US time, not your local time. Its "day" rolls
+over around midnight US Eastern time, which lands somewhere around
+9:30–11:00 AM India time (and can be later — NASA doesn't publish at a
+perfectly fixed time). If the scheduled task runs earlier than that in
+your time zone, it will correctly fetch whatever NASA is currently
+serving — which may still be the previous day's picture.
+
+This is expected, not a bug. Two things make it self-correcting:
+
+1. The default daily trigger is set to run at **1:00 PM** local time,
+   comfortably after NASA's typical rollover.
+2. The app always checks NASA's actual published date on every run —
+   not just "did we already run today" — so the very next run (whether
+   that's the next scheduled time, the next logon, or you manually
+   re-running it) will pick up the new picture as soon as NASA has it,
+   even if an earlier run that same day got the older one.
+
+If you want to be extra sure, you can add a second daily trigger a few
+hours later in Task Scheduler (right-click the task → Properties →
+Triggers → New), as a safety net for days NASA publishes late.
+
 ## Configuration
 
 Edit `%LOCALAPPDATA%\APODWallpaper\config.json` (created on first run):
@@ -127,39 +150,6 @@ Edit `%LOCALAPPDATA%\APODWallpaper\config.json` (created on first run):
 | `setup_task.py` | Compiled into `setup_task.exe`; registers the task post-install |
 | `build_msi.bat` | One-click MSI build wrapper for Option B |
 
----
+## MSI Build Runtime Flow
 
 ![msi_build_and_runtime_flow](msi_build_and_runtime_flow.png)
-## Two completely separate phases
-
-**Build phase** (happens once, on a Windows dev machine, by you): turns Python source into a distributable installer.
-
-**Install + runtime phase** (happens on any user's machine, including yours): what that installer actually does once double-clicked, and what runs automatically afterward.
-
-## What each file does
-
-| File | Phase | Purpose |
-|---|---|---|
-| `apod_wallpaper.py` | Runtime | The actual worker. Calls NASA's API, downloads the image, sets it as wallpaper, saves metadata to `state.json`. Compiled into `apod_wallpaper.exe`. |
-| `apod_info.py` | Runtime | The info window. Reads `state.json`, shows title/description, opens the NASA page or image on click. Compiled into `apod_info.exe`. |
-| `setup_task.py` | Runtime (one-time) | Registers the Task Scheduler job pointing at `apod_wallpaper.exe`, then runs it once immediately. Compiled into `setup_task.exe`. |
-| `setup.py` | **Build** | The recipe cx_Freeze follows: which `.py` files to compile into `.exe`, what to name them, what shortcuts to create, where to install to. This is what you run `python setup.py bdist_msi` against. |
-| `build_msi.bat` | Build | One-click wrapper: installs cx_Freeze, then runs `setup.py`. |
-| `install_task.ps1` / `uninstall_task.ps1` | Alternate runtime path | The non-MSI installer (Option A) — same end result as the MSI, but via a script instead of a compiled installer. |
-
-## Why `setup.py` exists — the actual build mechanics
-
-cx_Freeze does two jobs when you run `python setup.py bdist_msi`:
-
-1. **Freezes** each `.py` file into a standalone `.exe` — bundling a private copy of the Python interpreter plus every imported module (this is why we had to fix the `tkinter` exclusion earlier: whatever a script imports must be explicitly included or it's missing at runtime).
-2. **Packages** those `.exe` files, using the Windows Installer APIs, into a single `.msi`, including instructions for where to copy files (`Program Files\APODWallpaper`) and which shortcuts to create (the `shortcut_table` in `setup.py` — that's the exact code that was originally missing, then broken, and is now fixed).
-
-The output lands in `dist\APODWallpaper-1.0.0-win64.msi` — that one file is the entire deliverable; anyone can double-click it with no Python installed.
-
-## What happens after someone double-clicks the .msi
-
-Windows Installer reads the package and: copies the three `.exe` files to `Program Files\APODWallpaper`, creates the "Setup APOD Wallpaper" Start Menu shortcut and the "Today's Astronomy Picture" Desktop shortcut. Nothing runs automatically yet — that's why there's a manual "run this once" step (the cx_Freeze limitation we discussed; true zero-click would need WiX instead).
-
-From there, the diagram's two branches are independent and permanent:
-- **Automatic path**: Task Scheduler fires `apod_wallpaper.exe` daily at 8 AM and at every logon, silently.
-- **Manual path**: whenever you click the desktop icon, `apod_info.exe` opens and shows whatever `apod_wallpaper.exe` most recently wrote to `state.json`.

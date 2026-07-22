@@ -52,7 +52,7 @@ $ScriptDest = Join-Path $InstallDir "apod_wallpaper.py"
 # ---------------------------------------------------------------------
 $Action = New-ScheduledTaskAction -Execute $PythonExe -Argument "`"$ScriptDest`""
 
-$TriggerDaily  = New-ScheduledTaskTrigger -Daily -At 8:00AM
+$TriggerDaily  = New-ScheduledTaskTrigger -Daily -At 1:00PM
 $TriggerLogon  = New-ScheduledTaskTrigger -AtLogOn
 
 $Settings = New-ScheduledTaskSettingsSet `

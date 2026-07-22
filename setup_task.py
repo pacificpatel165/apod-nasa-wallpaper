@@ -40,7 +40,7 @@ def main():
             "/TN", TASK_NAME,
             "/TR", f'"{target_exe}"',
             "/SC", "DAILY",
-            "/ST", "08:00",
+            "/ST", "13:00",
             "/RL", "LIMITED",
             "/F",
         ],

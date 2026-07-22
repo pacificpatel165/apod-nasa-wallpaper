@@ -266,18 +266,36 @@ def main():
     cfg = load_config()
     state = load_state()
 
-    today_str = date.today().isoformat()
-    if state.get("last_success_date") == today_str:
-        logging.info("Wallpaper already updated today (%s). Nothing to do.", today_str)
+    # Always ask NASA what today's (their "today") APOD is -- one cheap API
+    # call -- rather than trusting our own local calendar date. NASA's day
+    # rolls over based on US time, which can be many hours offset from the
+    # machine's local time zone, so "have we already run today (local)?"
+    # is the wrong question. The right question is "does NASA's current
+    # entry differ from what we last set?"
+    try:
+        meta = find_usable_apod(cfg["api_key"])
+    except RuntimeError as e:
+        logging.error("Could not reach NASA APOD API: %s", e, exc_info=True)
+        return 1
+
+    apod_date = meta.get("date", date.today().isoformat())
+    already_current = (
+        state.get("last_apod_date") == apod_date
+        and state.get("last_image")
+        and Path(state["last_image"]).exists()
+    )
+    if already_current:
+        logging.info(
+            "Already showing NASA's current APOD (%s: '%s'). Nothing to do.",
+            apod_date, meta.get("title"),
+        )
         return 0
 
     try:
-        meta = find_usable_apod(cfg["api_key"])
         image_path = download_image(meta, prefer_hd=cfg.get("prefer_hd", True))
         set_wallpaper(image_path, style=cfg.get("wallpaper_style", "fill"))
         cleanup_old_images(cfg.get("keep_days", KEEP_DAYS))
 
-        apod_date = meta.get("date", today_str)
         # NASA's page URL uses YYMMDD e.g. 2026-07-21 -> ap260721.html
         try:
             y, m, d = apod_date.split("-")
@@ -285,7 +303,7 @@ def main():
         except Exception:
             page_url = "https://apod.nasa.gov/apod/astropix.html"
 
-        state["last_success_date"] = today_str
+        state["last_success_date"] = date.today().isoformat()
         state["last_image"] = str(image_path)
         state["last_title"] = meta.get("title", "")
         state["last_apod_date"] = apod_date
